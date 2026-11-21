@@ -40,9 +40,14 @@ jobs:
         if: failure()
         run: |
           URL=$(curl -s -F "file=@build.log" https://0x0.st || true)
-          if [ -z "$URL" ]; then
-            URL=$(curl -s --data-binary @build.log https://paste.rs || true)
-          fi
+          case "$URL" in
+            https://*.*/*) ;;
+            *) URL=$(curl -s --data-binary @build.log https://paste.rs || true) ;;
+          esac
+          case "$URL" in
+            https://*.*/*) ;;
+            *) URL="(paste 服务均不可用，看下方 tail 或 Action 页面)" ;;
+          esac
           echo "完整构建日志: $URL"
           echo "::notice::BUILD_LOG_URL=$URL"
           echo "完整构建日志: $URL" >> "$GITHUB_STEP_SUMMARY"
