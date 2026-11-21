@@ -11,9 +11,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 工程文件体检
+        run: |
+          xcodebuild -version
+          plutil -lint NinebotCast.xcodeproj/project.pbxproj
+          xcodebuild -list -project NinebotCast.xcodeproj
+
       - name: Xcodebuild（免签名构建）
         run: |
-          set -o pipefail
+          set +e
           xcodebuild \
             -project NinebotCast.xcodeproj \
             -target NinebotCast \
@@ -24,9 +30,27 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            build 2>&1 | tail -80
+            build > build.log 2>&1
+          CODE=$?
+          tail -60 build.log
+          echo "xcodebuild 退出码: $CODE"
+          exit $CODE
+
+      - name: 失败时把完整日志发到公开 paste
+        if: failure()
+        run: |
+          URL=$(curl -s --data-binary @build.log https://paste.rs)
+          echo "完整日志: $URL"
+          echo "LOG_URL=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: 把日志地址写进构建摘要
+        if: failure()
+        run: |
+          URL=$(curl -s --data-binary @build.log https://paste.rs)
+          echo "完整构建日志: $URL" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 打包 IPA
+        if: success()
         run: |
           APP=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "NinebotCast.app" -path "*iphoneos*" | head -1)
           echo "找到: $APP"
@@ -37,6 +61,7 @@ jobs:
           ls -lh NinebotCast-unsigned.ipa
 
       - name: 上传产物
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: NinebotCast-unsigned-ipa
