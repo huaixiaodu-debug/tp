@@ -58,10 +58,6 @@ class SampleHandler: RPBroadcastSampleHandler {
         adaptor = nil
     }
 
-    override func broadcastAnnotated(withApplicationInfo applicationInfo: [String: NSObject]) {
-        super.broadcastAnnotated(withApplicationInfo: applicationInfo)
-    }
-
     /// 只处理视频；音频走手机扬声器或蓝牙，不推给仪表
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer,
                                       with sampleBufferType: RPSampleBufferType) {
