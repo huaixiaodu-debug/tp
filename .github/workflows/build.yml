@@ -1,0 +1,44 @@
+name: Build unsigned IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcodebuild（免签名构建）
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project NinebotCast.xcodeproj \
+            -target NinebotCast \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build 2>&1 | tail -80
+
+      - name: 打包 IPA
+        run: |
+          APP=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "NinebotCast.app" -path "*iphoneos*" | head -1)
+          echo "找到: $APP"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry NinebotCast-unsigned.ipa Payload
+          ls -lh NinebotCast-unsigned.ipa
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: NinebotCast-unsigned-ipa
+          path: NinebotCast-unsigned.ipa
+          retention-days: 90
