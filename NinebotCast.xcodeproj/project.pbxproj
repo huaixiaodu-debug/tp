@@ -148,6 +148,9 @@
 			dependencies = (
 				AA000000000000000000001E /* PBXTargetDependency */,
 			);
+			fileSystemSynchronizedGroups = (
+				AA0000000000000000000014 /* NinebotCast */,
+			);
 			name = NinebotCast;
 			productName = NinebotCast;
 			productReference = AA0000000000000000000011 /* NinebotCast.app */;
@@ -164,6 +167,9 @@
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA0000000000000000000015 /* NinebotBroadcast */,
 			);
 			name = NinebotBroadcast;
 			productName = NinebotBroadcast;
