@@ -2,12 +2,34 @@ import SwiftUI
 import ReplayKit
 import Network
 
+/// 全局持有 picker，供兜底按钮直接触发
+enum PickerHolder {
+    static var picker: RPSystemBroadcastPickerView?
+
+    /// 递归找到 picker 内部的 broadcast 按钮并触发（绕过按钮不可见的渲染问题）
+    static func trigger() -> Bool {
+        guard let picker else { return false }
+        return tapButton(in: picker)
+    }
+
+    private static func tapButton(in view: UIView) -> Bool {
+        if let btn = view as? UIButton {
+            btn.sendActions(for: .touchUpInside)
+            return true
+        }
+        for sub in view.subviews where tapButton(in: sub) { return true }
+        return false
+    }
+}
+
 /// 把系统广播选择器包成 SwiftUI 可用的控件
 struct BroadcastPicker: UIViewRepresentable {
     func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
-        let picker = RPSystemBroadcastPickerView(frame: .zero)
+        let picker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 240, height: 44))
         picker.showsMicrophoneButton = false
         picker.preferredExtension = "com.ninebot.cast.broadcast"
+        picker.backgroundColor = .clear
+        PickerHolder.picker = picker
         return picker
     }
 
@@ -18,6 +40,7 @@ struct ContentView: View {
     @AppStorage("dashHost") private var dashHost = "192.168.1.1"
     @State private var probeStatus = ""
     @State private var probing = false
+    @State private var pickerHint = ""
 
     var body: some View {
         Form {
@@ -52,10 +75,21 @@ struct ContentView: View {
                 BroadcastPicker()
                     .frame(height: 44)
                     .frame(maxWidth: .infinity, alignment: .center)
+                Button {
+                    pickerHint = PickerHolder.trigger()
+                        ? "已触发系统投屏面板，请在弹出的面板里选择 Ninebot Broadcast 并开始广播。"
+                        : "投屏按钮未初始化，请重启手机后重新打开本 App。"
+                } label: {
+                    Text("打不开按钮？点这里直接调起系统投屏面板")
+                        .font(.footnote)
+                }
+                if !pickerHint.isEmpty {
+                    Text(pickerHint).font(.footnote).foregroundColor(.secondary)
+                }
             } header: {
                 Text("开始投屏")
             } footer: {
-                Text("点上方按钮 → 选择 Ninebot Broadcast → 开始广播。然后手机全屏打开导航（高德 / 百度 / Apple Maps 都行），画面会实时推到仪表。")
+                Text("点上方圆形按钮 → 选择 Ninebot Broadcast → 开始广播。然后手机全屏打开导航（高德 / 百度 / Apple Maps 都行），画面会实时推到仪表。若按钮区域一直是空白：先重启一次手机（越狱/伪签名安装后系统需要重启才会注册投屏扩展），再打开本 App。")
             }
 
             Section {

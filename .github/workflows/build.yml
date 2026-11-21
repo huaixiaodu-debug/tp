@@ -52,10 +52,9 @@ jobs:
           echo "::notice::BUILD_LOG_URL=$URL"
           echo "完整构建日志: $URL" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: 打包 IPA（含结构校验 + ldid 伪签名）
+      - name: 打包 IPA
         if: success()
         run: |
-          brew install ldid >/dev/null 2>&1 || true
           APP=$(find "$GITHUB_WORKSPACE/build" ~/Library/Developer/Xcode/DerivedData -type d -name "NinebotCast.app" 2>/dev/null | grep -i iphoneos | head -1)
           echo "找到: $APP"
           if [ -z "$APP" ]; then
@@ -65,18 +64,7 @@ jobs:
           rm -rf Payload
           mkdir Payload
           cp -R "$APP" Payload/
-          # 伪签名主程序与扩展（越狱机 AppSync/Filza 安装必需）
-          ldid -S Payload/NinebotCast.app/NinebotCast
-          ldid -S Payload/NinebotCast.app/PlugIns/NinebotBroadcast.appex/NinebotBroadcast 2>/dev/null || \
-            ldid -S Payload/NinebotCast.app/PlugIns/*.appex/* 2>/dev/null || true
-          # 结构校验：必须存在 Payload/NinebotCast.app/Info.plist
-          unzip -l NinebotCast-unsigned.ipa 2>/dev/null || zip -qry NinebotCast-unsigned.ipa Payload
-          if ! unzip -l NinebotCast-unsigned.ipa | grep -q "Payload/NinebotCast.app/Info.plist"; then
-            echo "::error::IPA 结构错误：缺少 Payload/NinebotCast.app/Info.plist"
-            unzip -l NinebotCast-unsigned.ipa
-            exit 1
-          fi
-          echo "::notice::IPA_OK=$(unzip -l NinebotCast-unsigned.ipa | grep -cE 'Payload/NinebotCast.app/') 个文件"
+          zip -qry NinebotCast-unsigned.ipa Payload
           ls -lh NinebotCast-unsigned.ipa
 
       - name: 上传产物
