@@ -55,8 +55,12 @@ jobs:
       - name: 打包 IPA
         if: success()
         run: |
-          APP=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "NinebotCast.app" -path "*iphoneos*" | head -1)
+          APP=$(find "$GITHUB_WORKSPACE/build" ~/Library/Developer/Xcode/DerivedData -type d -name "NinebotCast.app" 2>/dev/null | grep -i iphoneos | head -1)
           echo "找到: $APP"
+          if [ -z "$APP" ]; then
+            find "$GITHUB_WORKSPACE" ~/Library/Developer/Xcode/DerivedData -type d -name "*.app" 2>/dev/null | head -10
+            exit 1
+          fi
           rm -rf Payload
           mkdir Payload
           cp -R "$APP" Payload/
