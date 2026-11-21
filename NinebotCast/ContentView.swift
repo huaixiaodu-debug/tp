@@ -25,7 +25,7 @@ struct ContentView: View {
                 TextField("仪表 IP（默认 192.168.1.1）", text: $dashHost)
                     .keyboardType(.decimalPad)
                     .autocorrectionDisabled()
-                    .font(.monospaced(.body))
+                    .font(.body.monospaced())
                 Button {
                     probe()
                 } label: {
@@ -75,37 +75,74 @@ struct ContentView: View {
             .set(dashHost.trimmingCharacters(in: .whitespaces), forKey: "dashHost")
     }
 
+    // MARK: - 探测（App 内直连实现，独立于扩展的 NinebotOutput）
+
+    /// 20 字节心跳包：85 CC 00 04 | 8×00 | counter(LE32) | 02 00 00 00
+    private func heartbeat(counter: UInt32) -> Data {
+        var buf = Data(count: 20)
+        buf[0] = 0x85
+        buf[1] = 0xCC
+        buf[3] = 0x04
+        withUnsafeBytes(of: counter.littleEndian) { buf.replaceSubrange(12..<16, with: $0) }
+        buf[16] = 0x02
+        return buf
+    }
+
+    private func isPong(_ data: Data) -> Bool {
+        data.count >= 20 && data[0] == 0x85 && data[1] == 0xCC
+            && data[2] == 0x00 && data[3] == 0x04
+    }
+
     private func probe() {
         save()
         let host = dashHost.trimmingCharacters(in: .whitespaces)
+        guard !host.isEmpty else { return }
         probing = true
         probeStatus = ""
-        let out = NinebotOutput(host: host)
-        var finished = false
-        var attempts = 0
 
-        func finish(_ ok: Bool, _ rtt: Double?) {
-            guard !finished else { return }
-            finished = true
-            out.stop()
-            DispatchQueue.main.async {
-                probing = false
-                if ok {
-                    probeStatus = "✓ 心跳有回应，仪表已进入投屏接收态。可以直接开始投屏。"
-                } else {
-                    probeStatus = "✗ 12 秒内无 pong 回应。检查：①手机连的是仪表热点而非家里路由器 ②仪表已打开投屏 ③IP 是否为 \(host)"
+        var finished = false
+        let params = NWParameters.udp
+        guard let port = NWEndpoint.Port(rawValue: 5013) else { return }
+        let conn = NWConnection(host: NWEndpoint.Host(host), port: port, using: params)
+
+        conn.stateUpdateHandler = { state in
+            guard case .ready = state else { return }
+            // 进入接收态需要仪表开投屏；每 1.5 秒发一次心跳，共 7 次
+            for i in 0..<7 {
+                DispatchQueue.global().asyncAfter(deadline: .now() + Double(i) * 1.5) {
+                    guard !finished else { return }
+                    conn.send(content: heartbeat(counter: UInt32(i + 1)),
+                              completion: .contentProcessed { _ in })
                 }
             }
         }
+        conn.start(queue: .global(qos: .userInitiated))
 
-        func attempt() {
-            guard attempts < 6, !finished else { return }
-            attempts += 1
-            out.probe(timeout: 2.0) { ok, rtt in
-                if ok { finish(true, rtt) } else { attempt() }
+        func recv() {
+            guard !finished else { return }
+            conn.receiveMessage { data, _, _, _ in
+                if let data, isPong(data) {
+                    finished = true
+                    conn.cancel()
+                    DispatchQueue.main.async {
+                        probing = false
+                        probeStatus = "✓ 心跳有回应，仪表已进入投屏接收态。可以直接开始投屏。"
+                    }
+                    return
+                }
+                recv()
             }
         }
-        attempt()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12.5) { finish(false, nil) }
+        recv()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12.5) {
+            guard !finished else { return }
+            finished = true
+            conn.cancel()
+            DispatchQueue.main.async {
+                probing = false
+                probeStatus = "✗ 12 秒内无 pong 回应。检查：①手机连的是仪表热点而非家里路由器 ②仪表已打开投屏 ③IP 是否为 \(host)"
+            }
+        }
     }
 }
