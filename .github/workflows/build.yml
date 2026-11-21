@@ -36,17 +36,15 @@ jobs:
           echo "xcodebuild 退出码: $CODE"
           exit $CODE
 
-      - name: 失败时把完整日志发到公开 paste
+      - name: 失败时把完整日志发到公开 paste 并用 notice 带出
         if: failure()
         run: |
-          URL=$(curl -s --data-binary @build.log https://paste.rs)
-          echo "完整日志: $URL"
-          echo "LOG_URL=$URL" >> "$GITHUB_OUTPUT"
-
-      - name: 把日志地址写进构建摘要
-        if: failure()
-        run: |
-          URL=$(curl -s --data-binary @build.log https://paste.rs)
+          URL=$(curl -s -F "file=@build.log" https://0x0.st || true)
+          if [ -z "$URL" ]; then
+            URL=$(curl -s --data-binary @build.log https://paste.rs || true)
+          fi
+          echo "完整构建日志: $URL"
+          echo "::notice::BUILD_LOG_URL=$URL"
           echo "完整构建日志: $URL" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 打包 IPA
