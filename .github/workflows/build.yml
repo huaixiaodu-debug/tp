@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -93,3 +95,17 @@ jobs:
           name: NinebotCast-unsigned-ipa
           path: NinebotCast-unsigned.ipa
           retention-days: 90
+
+      - name: 发布 Release（固定 nightly 直链，手机 Safari 直接下载）
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          gh release delete nightly --yes 2>/dev/null || true
+          git push origin --delete nightly 2>/dev/null || true
+          sleep 3
+          gh release create nightly NinebotCast-unsigned.ipa \
+            --title "NinebotCast nightly 构建 $(date +%m-%d)" \
+            --notes "越狱机安装：务必用 AppSync Unified + Filza 安装（TrollStore 安装扩展不注册，会导致投屏按钮空白）。装完必须重启手机再打开 App。"
+          echo "::notice::RELEASE_URL=https://github.com/${{ github.repository }}/releases/download/nightly/NinebotCast-unsigned.ipa"
