@@ -44,6 +44,7 @@ final class NinebotOutput {
     private var started = false
 
     var lastRTTms: Double?
+    var lastError: String?
     private(set) var framesSent = 0
     private(set) var packetsSent = 0
     private(set) var bytesSent = 0
@@ -112,7 +113,10 @@ final class NinebotOutput {
                              port: NWEndpoint.Port(rawValue: videoPort)!,
                              using: params)
         v.stateUpdateHandler = { [weak self] state in
-            if case .failed(let e) = state { NSLog("[Ninebot] 视频通道失败: \(e)") }
+            if case .failed(let e) = state {
+                self?.lastError = "video: \(e)"
+                NSLog("[Ninebot] 视频通道失败: \(e)")
+            }
         }
         v.start(queue: queue)
         videoConn = v
@@ -122,6 +126,7 @@ final class NinebotOutput {
                              using: params)
         c.stateUpdateHandler = { [weak self] state in
             if case .ready = state { self?.receivePong() }
+            if case .failed(let e) = state { self?.lastError = "ctrl: \(e)" }
         }
         c.start(queue: queue)
         ctrlConn = c

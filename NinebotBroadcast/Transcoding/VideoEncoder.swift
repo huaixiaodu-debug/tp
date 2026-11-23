@@ -50,16 +50,63 @@ public final class VideoEncoder {
         }
     }
 
+    /// 固定输出尺寸：设置后所有帧先缩放到该尺寸再编码（投屏到固定分辨率仪表用）
+    public var targetSize: CGSize?
+
     public func encode(_ sampleBuffer: CMSampleBuffer) {
         guard let imageBuffer = sampleBuffer.imageBuffer else {
             Self.logger.error("Invalid sample buffer passed to video encoder; missing imageBuffer")
             return
         }
-        encode(
-            imageBuffer,
-            presentationTimeStamp: sampleBuffer.presentationTimeStamp,
-            duration: sampleBuffer.duration
-        )
+        let pts = sampleBuffer.presentationTimeStamp
+        let dur = sampleBuffer.duration
+        if let target = targetSize {
+            encodingQueue.sync {
+                guard let converted = convertToTarget(imageBuffer, size: target) else { return }
+                encodeLocked(converted, presentationTimeStamp: pts, duration: dur)
+            }
+        } else {
+            encode(imageBuffer, presentationTimeStamp: pts, duration: dur)
+        }
+    }
+
+    // MARK: - 固定分辨率转换（仪表投屏）
+
+    private var transferSession: VTPixelTransferSession?
+    private var outputPool: CVPixelBufferPool?
+    private var outputPoolSize: CGSize = .zero
+
+    private func convertToTarget(_ src: CVPixelBuffer, size: CGSize) -> CVPixelBuffer? {
+        dispatchPrecondition(condition: .onQueue(encodingQueue))
+        if outputPool == nil || outputPoolSize != size {
+            let attrs: [CFString: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                kCVPixelBufferWidthKey as String: Int(size.width),
+                kCVPixelBufferHeightKey as String: Int(size.height)
+            ]
+            outputPool = CVPixelBufferPoolCreate(nil, attrs as CFDictionary, nil)
+            outputPoolSize = size
+        }
+        var dst: CVPixelBuffer?
+        guard let pool = outputPool,
+              CVPixelBufferPoolCreatePixelBuffer(nil, pool, &dst) == kCVReturnSuccess,
+              let dstBuf = dst else {
+            Self.logger.error("Failed to create target pixel buffer")
+            return nil
+        }
+        if transferSession == nil {
+            transferSession = VTPixelTransferSessionCreate(nil)
+        }
+        guard let ts = transferSession else {
+            Self.logger.error("Failed to create pixel transfer session")
+            return nil
+        }
+        let status = VTPixelTransferSessionTransferImage(ts, src, dstBuf)
+        guard status == noErr else {
+            Self.logger.error("Pixel transfer failed: \(status)")
+            return nil
+        }
+        return dstBuf
     }
 
     public func encode(
@@ -68,7 +115,17 @@ public final class VideoEncoder {
         duration: CMTime = .invalid
     ) {
         encodingQueue.sync {
-            let pixelBufferWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
+            encodeLocked(pixelBuffer, presentationTimeStamp: presentationTimeStamp, duration: duration)
+        }
+    }
+
+    private func encodeLocked(
+        _ pixelBuffer: CVPixelBuffer,
+        presentationTimeStamp: CMTime,
+        duration: CMTime
+    ) {
+        dispatchPrecondition(condition: .onQueue(encodingQueue))
+        let pixelBufferWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
             let pixelBufferHeight = CGFloat(CVPixelBufferGetHeight(pixelBuffer))
             if pixelBufferWidth != outputSize?.width || pixelBufferHeight != outputSize?.height {
                 outputSize = CGSize(width: pixelBufferWidth, height: pixelBufferHeight)
@@ -119,7 +176,6 @@ public final class VideoEncoder {
             } catch {
                 Self.logger.error("Failed to encode frame with error: \(error, privacy: .public)")
             }
-        }
     }
 
     // MARK: Internal

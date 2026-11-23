@@ -41,6 +41,7 @@ struct ContentView: View {
     @State private var probeStatus = ""
     @State private var probing = false
     @State private var pickerHint = ""
+    @State private var diagText = ""
 
     var body: some View {
         Form {
@@ -93,6 +94,22 @@ struct ContentView: View {
             }
 
             Section {
+                ScrollView {
+                    Text(diagText.isEmpty
+                         ? "（尚无诊断数据。先开始广播，2~3 秒后此面板自动刷新。）"
+                         : diagText)
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: 130)
+                Button("手动刷新") { diagText = Diag.read() }
+            } header: {
+                Text("投屏诊断（扩展内部状态）")
+            } footer: {
+                Text("若面板一直为空：读不到扩展回传，可用 Filza 打开 /var/mobile/Documents/nbc_diag.json 查看。")
+            }
+
+            Section {
                 Text("视频为单向传输，触控请在手机上操作。音频走手机扬声器或车载蓝牙。骑行时请以路面安全为先。")
                     .font(.footnote)
                     .foregroundColor(.secondary)
@@ -100,7 +117,12 @@ struct ContentView: View {
                 Text("说明")
             }
         }
-        .onAppear(perform: save)
+        .onAppear {
+            save()
+            Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+                diagText = Diag.read()
+            }
+        }
         .onChange(of: dashHost) { _ in save() }
     }
 
