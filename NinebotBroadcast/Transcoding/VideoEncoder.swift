@@ -80,11 +80,17 @@ public final class VideoEncoder {
         dispatchPrecondition(condition: .onQueue(encodingQueue))
         if outputPool == nil || outputPoolSize != size {
             let attrs: [CFString: Any] = [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-                kCVPixelBufferWidthKey as String: Int(size.width),
-                kCVPixelBufferHeightKey as String: Int(size.height)
+                kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                kCVPixelBufferWidthKey: Int(size.width),
+                kCVPixelBufferHeightKey: Int(size.height)
             ]
-            outputPool = CVPixelBufferPoolCreate(nil, attrs as CFDictionary, nil)
+            var pool: CVPixelBufferPool?
+            guard CVPixelBufferPoolCreate(nil, attrs as CFDictionary, nil, &pool) == kCVReturnSuccess,
+                  let p = pool else {
+                Self.logger.error("Failed to create pixel buffer pool")
+                return nil
+            }
+            outputPool = p
             outputPoolSize = size
         }
         var dst: CVPixelBuffer?
@@ -95,13 +101,16 @@ public final class VideoEncoder {
             return nil
         }
         if transferSession == nil {
-            transferSession = VTPixelTransferSessionCreate(nil)
+            var session: VTPixelTransferSession?
+            guard VTPixelTransferSessionCreate(allocator: nil, pixelTransferSessionOut: &session) == noErr,
+                  let s = session else {
+                Self.logger.error("Failed to create pixel transfer session")
+                return nil
+            }
+            transferSession = s
         }
-        guard let ts = transferSession else {
-            Self.logger.error("Failed to create pixel transfer session")
-            return nil
-        }
-        let status = VTPixelTransferSessionTransferImage(ts, src, dstBuf)
+        guard let ts = transferSession else { return nil }
+        let status = VTPixelTransferSessionTransferImage(ts, from: src, to: dstBuf)
         guard status == noErr else {
             Self.logger.error("Pixel transfer failed: \(status)")
             return nil
